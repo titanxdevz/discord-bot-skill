@@ -1,6 +1,14 @@
 ---
 name: discord-bot
-description: Framework-agnostic engineering guide for Discord bots and integrations. Use when building, reviewing, debugging, migrating, or deploying a Discord bot in any language. Covers slash/context commands, interactions, components, embeds, Components V2, handlers, permissions, database, queues, rate limits, sharding, dashboards/REST, testing, and operations. Triggers on: discord bot, discord.js, discord.py, discordeno, serenity, poise, JDA, Discord.Net, interactions.py, hikari, slash command, interaction failed, unknown interaction, 10062, gateway intents, custom_id, embed, components v2, sharding, rate limit, deferred reply, modal, collector, ticket system, giveaway timer, bot dashboard, bot deployment.
+description: >-
+  Framework-agnostic engineering guide for Discord bots and integrations. Use when building,
+  reviewing, debugging, migrating, or deploying a Discord bot in any language. Covers
+  slash/context commands, interactions, components, embeds, Components V2, handlers, permissions,
+  database, queues, rate limits, sharding, dashboards/REST, testing, and operations. Triggers on
+  discord bot, discord.js, discord.py, discordeno, serenity, poise, JDA, Discord.Net,
+  interactions.py, hikari, slash command, interaction failed, unknown interaction, 10062, gateway
+  intents, custom_id, embed, components v2, sharding, rate limit, deferred reply, modal, collector,
+  ticket system, giveaway timer, bot dashboard, bot deployment.
 ---
 
 # Discord Bot Engineering
