@@ -12,7 +12,20 @@ Each entry: symptom → why it happens → fix. Use this when reviewing a bot or
 | Response appears twice | `reply` then `followUp` with the same content | `editReply` for the original, follow-ups only for extra content |
 | Button click does nothing | Handler threw before ack, error swallowed | Wrap in try/catch; always respond |
 | Ephemeral reply turns public | `followUp` visibility defaults differ | Pass visibility explicitly |
-| Modal never opens | Already replied/deferred | Modal must be the initial response |
+| Modal never opens / 40060 error | Called deferReply() before showModal() | showModal MUST be the initial interaction response; cannot defer or reply first |
+| Modal renders but inputs missing | Action Row + Text Input (deprecated in modals) | Use `Label` wrapping the input |
+
+## Gateway & events
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Event never fires | Intent missing or not enabled in the portal | Map event → intent (`13-events.md`); enable privileged intents |
+| Connection closes on boot (`4013`/`4014`) | Invalid or disallowed intent | Remove the intent or get it approved |
+| `content` is empty | `MESSAGE_CONTENT` not enabled | Request the intent (privileged) or use interactions only |
+| Crashes on old messages/DMs | Partials enabled but `null` fields not handled | Handle/fetch partial entities, or drop partials |
+| Setup runs twice | `RESUMED` treated like `READY` | Gate one-time work on the first `READY` only |
+| Duplicate processing after reconnect | Replayed dispatches not deduped | Idempotent handler keyed by message/interaction ID |
+| Event ordering surprises | Assuming per-guild ordering | Per-guild queue/lock; re-fetch state |
 
 ## Component routing
 
@@ -35,6 +48,7 @@ Each entry: symptom → why it happens → fix. Use this when reviewing a bot or
 | Bulk op takes forever | Per-item REST calls in a loop | Bulk endpoints / bounded concurrency |
 | Bot stalls globally | One feature saturates the global limit | Isolate background work in a worker with its own budget |
 | Duplicate command errors | Every shard registers commands | Single owner for registration |
+| 429 flood on bot reconnect | Commands re-registered in ready/on_ready handler | Use standalone deploy script; ready fires on every reconnect |
 
 ## Data layer
 
@@ -78,12 +92,24 @@ Each entry: symptom → why it happens → fix. Use this when reviewing a bot or
 | Symptom | Cause | Fix |
 |---|---|---|
 | `400 Bad Request` on send | Over a limit (2,000 chars, 10 embeds, 25 fields, 6,000 embed chars) | Truncate/paginate before sending |
-| Components ignored | CV2 flag missing, or webhook without `?with_components=true` | Set flag; add query param |
+| Components ignored | CV2 flag missing, or non-app webhook without `?with_components=true` | Set flag; add query param |
+| `400 Bad Request` with CV2 flag | `content`, `embeds`, `files`, or `poll` sent alongside components | Send components only |
 | Content silently missing | CV2 disables `content`/`embeds` | Use Text Display / Container |
 | Message can't be "fixed" | CV2 flag is irreversible | Delete and resend; choose deliberately |
 | Panel spam | New message per event | One message, edit in place |
 | Broken layout on mobile | Wide ASCII/tables, too many rows | Short text, fewer controls |
 | Mentions ping everyone | User input echoed with mentions allowed | Explicit allowed mentions |
+
+## Voice
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Audio never starts | Played before connection is `Ready` | `entersState(connection, Ready, timeout)` |
+| Connects, then silence | UDP blocked (container/NAT), or missing Opus engine | Allow UDP; install opus/ffmpeg; `generateDependencyReport()` |
+| No audio received | Joined deafened | `selfDeaf: false` for receive |
+| Decryption/DAVE failures | Library without DAVE, or `daveEncryption: false` | Upgrade the library; keep DAVE enabled |
+| Connections leak | Player/connection not destroyed on leave or shutdown | Single teardown path for both |
+| Voice state storms | Acting per `VOICE_STATE_UPDATE` | Debounce per member, batch moves |
 
 ## Code quality
 

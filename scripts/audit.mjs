@@ -355,7 +355,7 @@ function scanFile(root, file, content) {
           /^\s*(?:async\s+)?(?:function\s+)?[A-Za-z_$][\w$]*\s*\([^;]*\)\s*\{?\s*$/.test(prev) ||
           /=>\s*\{?\s*$/.test(prev)) break;
         if (!/\bawait\b/.test(prev) || /^import /.test(prev)) continue;
-        if (/\bawait\s+[\w.$]*\.(?:reply|send|respond|defer|edit|create|update|followUp|follow_up|send_message)\s*\(/.test(prev)) continue;
+        if (/\bawait\s+[\w.$]*\.(?:reply|send|respond|defer|deferReply|defer_reply|edit|editReply|edit_reply|create|update|followUp|follow_up|send_message)\s*\(/.test(prev)) continue;
         slowAwait = true;
         break;
       }
@@ -422,14 +422,15 @@ function scanFile(root, file, content) {
     });
   }
 
-  // custom_id built by joining multiple parts with "_"
+  // custom_id built by joining multiple parts with "_" (e.g. `action_${userId}_${id}`)
   lines.forEach((line, i) => {
-    if (!/custom_?id|customId/i.test(line)) return;
+    if (/^\s*(\/\/|\/\*|\*)/.test(line)) return;
+    if (/throw\s+new\s+Error|console\./.test(line)) return;
+    if (!/setCustomId|custom_?id\s*[:=]/i.test(line)) return;
     const tpl = line.match(/`[^`]*`/);
     if (!tpl) return;
-    const interpolations = (tpl[0].match(/\$\{/g) ?? []).length;
-    if (interpolations >= 2 && /_/.test(tpl[0])) {
-      push('ambiguous-custom-id', 'info', i + 1, 'custom_id joins multiple parts with "_".', 'Prefer a delimiter that cannot appear in parts, or a fixed positional parse.');
+    if (/\$\{[^}]+\}_|_\$\{[^}]+\}/.test(tpl[0])) {
+      push('ambiguous-custom-id', 'info', i + 1, 'custom_id joins multiple dynamic parts with "_".', 'Prefer a delimiter that cannot appear in parts (like ":"), or a fixed positional parse.');
     }
   });
 
@@ -515,6 +516,30 @@ function scanFile(root, file, content) {
   // v13 / outdated API smells
   if (/MessageEmbed|MessageActionRow|MessageButton|Intents\.FLAGS/.test(content)) {
     push('discordjs-v13-api', 'medium', firstLine(lines, /MessageEmbed|MessageActionRow|MessageButton|Intents\.FLAGS/), 'discord.js v13-era API in use.', 'Check the installed major; v14 renamed these to *Builder.');
+  }
+
+  // Command synchronization inside ready event
+  if (isCode && !isScript) {
+    lines.forEach((line, i) => {
+      if (/\b(?:client\s*\.\s*(?:once|on)\s*\(\s*['"`](?:ready|ClientReady)['"`]|@(?:bot|client)\.event|def\s+on_ready)/i.test(line)) {
+        const window = lines.slice(i, Math.min(lines.length, i + 35)).join('\n');
+        if (/Routes\.application(?:Guild)?Commands|\.commands\s*\.\s*set\s*\(|\.tree\.sync\s*\(|application\.bulk_overwrite/i.test(window)) {
+          push('command-sync-on-ready', 'medium', i + 1, 'Commands synchronized inside the ready/on_ready handler.', 'Sync commands via a separate deploy script or content-hashed startup check; ready fires on every reconnect and triggers rate limits.');
+        }
+      }
+    });
+  }
+
+  // Modal opened after interaction already acknowledged or deferred
+  if (isCode) {
+    lines.forEach((line, i) => {
+      if (/\b(?:interaction\s*\.\s*showModal|show_modal)\s*\(/.test(line)) {
+        const prevWindow = lines.slice(Math.max(0, i - 15), i).join('\n');
+        if (/\binteraction\s*\.\s*(?:deferReply|reply|deferUpdate|update)\s*\(/.test(prevWindow)) {
+          push('modal-after-defer', 'high', i + 1, 'showModal invoked after deferReply or reply.', 'showModal MUST be the initial response to an interaction; you cannot defer or reply before showing a modal.');
+        }
+      }
+    });
   }
 
   // Keep per-file noise down: repeated low/info findings of the same rule add no information.

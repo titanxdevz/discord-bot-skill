@@ -1,4 +1,4 @@
-# 03 — Messages, Embeds & Components V2
+# 03 â€” Messages, Embeds & Components V2
 
 Primary sources:
 - https://discord.com/developers/docs/resources/message
@@ -20,14 +20,59 @@ Primary sources:
 
 Do not mix CV2 with embeds/content in the same message: CV2 disables both.
 
-## 2. Message baseline
+## 2. Message baseline & Discord Markdown
 
 - Content limit ~2,000 chars; keep messages short and paginate.
-- Markdown: use code fences for code, `>` for quotes, `-#` for subtext (supported clients).
-- Mention policy: prefer explicit allowed mentions; never allow `@everyone` by accident.
-- Timestamps: `<t:unix:style>` (`R`, `f`, `F`, `d`, `t`) instead of manually formatting.
 - Links: use masked links `[text](url)`; sanitize user-provided URLs.
 - Files: expose attachments deliberately; do not assume embeds render them.
+- Message flags:
+  - `MessageFlags.SuppressNotifications` (`4096` / `1 << 12`): Silent message (`@silent`), sends without push/desktop notification or sound.
+  - `MessageFlags.SuppressEmbeds` (`4` / `1 << 2`): Hides automatic link preview embeds generated from URLs in content.
+
+### Markdown syntax cheat sheet
+
+| Style | Syntax | Notes |
+|---|---|---|
+| Bold | `**text**` | Standard double asterisk |
+| Italic | `*text*` or `_text_` | Single asterisk or underscore |
+| Bold Italic | `***text***` | Triple asterisk |
+| Underline | `__text__` | Double underscore (Discord-specific) |
+| Strikethrough | `~~text~~` | Double tilde |
+| Spoiler | `||text||` | Double pipe (click to reveal) |
+| Underline Bold | `__**text**__` | Nested combinations allowed |
+| Inline code | `` `code` `` | Single backtick |
+| Code block | ```` ```lang ```` | Fenced with optional syntax highlighting |
+| Single quote | `> text` | Space after `>` required |
+| Multi-line quote | `>>> text` | Space after `>>>`; quotes everything until end of string |
+| Subtext / small | `-# text` | Space after `-#` required; must be at start of line |
+| Headers | `# H1`, `## H2`, `### H3` | Space after `#` required; must be at start of line |
+| Bullet list | `- item` or `* item` | Space after bullet required; 2 spaces indent for child |
+
+### Dynamic timestamps
+
+Never format dates/times statically in bot responses; use Discord's native `<t:UNIX_SECONDS:FLAG>` so timestamps render in each user's local timezone and locale:
+
+| Flag | Name | Output example |
+|---|---|---|
+| `t` | Short Time | `9:01 AM` |
+| `T` | Long Time | `9:01:00 AM` |
+| `d` | Short Date | `11/13/2026` |
+| `D` | Long Date | `November 13, 2026` |
+| `f` | Short Date/Time *(default)* | `November 13, 2026 9:01 AM` |
+| `F` | Long Date/Time | `Friday, November 13, 2026 9:01 AM` |
+| `R` | Relative Time | `2 minutes ago` / `in 5 minutes` |
+
+Example: `<t:1773489600:R>` renders as relative countdown or elapsed time.
+
+### Mentions & custom emoji syntax
+
+| Entity | Syntax | Notes |
+|---|---|---|
+| User mention | `<@USER_ID>` | Pings user unless blocked by `allowed_mentions` |
+| Channel mention | `<#CHANNEL_ID>` | Clickable channel link |
+| Role mention | `<@&ROLE_ID>` | Mentions role |
+| Static emoji | `<:name:EMOJI_ID>` | Custom guild emoji |
+| Animated emoji | `<a:name:EMOJI_ID>` | Animated custom guild emoji (requires Nitro / bot perm) |
 
 ## 3. Embeds
 
@@ -56,7 +101,7 @@ Rules:
 ## 4. Classic components (legacy-safe)
 
 - 5 action rows max; 5 buttons per row; one select per row.
-- `custom_id` 1–100 chars; button label ≤80; select options ≤25.
+- `custom_id` 1â€“100 chars; button label â‰¤80; select options â‰¤25.
 - Link buttons use `url`, not `custom_id`.
 - Disable controls while an operation is in flight to prevent double clicks.
 - Remove controls when the underlying resource is deleted.
@@ -65,30 +110,39 @@ Use classic components when the library lacks CV2 support or the layout is simpl
 
 ## 5. Components V2
 
-Facts:
+Facts (verified against the current component reference):
 
-- Requires message flag `IS_COMPONENTS_V2` = `1 << 15` = **32768**.
+- Requires message flag `IS_COMPONENTS_V2` = `1 << 15` = **32768** (a *message* flag; the unrelated
+  `MESSAGE_CONTENT` gateway intent also equals `1 << 15` â€” different namespace, do not confuse them).
 - `content` and `embeds` no longer work; use Text Display / Container instead.
-- Attachments are hidden unless exposed through a component (media gallery/file).
-- `poll` and `stickers` are disabled.
-- Max **40 components** per message.
+- Attachments are hidden unless exposed through a component (media gallery / file).
+- `poll` and `stickers` are disabled. With the flag set, only components may be sent â€” sending
+  `content`, `embeds`, `files`, or `poll` fails with `400 Bad Request`.
+- Max **40 components** per message in total, counting nested children.
 - The flag is **irreversible**: once a message is sent with it, it cannot be removed.
-- Webhook executions need `?with_components=true`, otherwise components are ignored.
+- Webhooks: application-owned webhooks can always send components. Other webhook executions need
+  `?with_components=true`, and may only send non-interactive components. With the CV2 flag, a
+  webhook message can contain only `components`.
 - Library support varies by version; check installed declarations for builder names.
 
-Component vocabulary (verify names in your library):
+Component types (numeric values are stable; names are library-specific):
 
-| Component | Purpose |
-|---|---|
-| Container | Grouped layout with accent color |
-| Text Display | Markdown text block |
-| Section | Text + accessory (thumbnail/button) |
-| Separator | Spacing/divider |
-| Media Gallery | Image/video grid |
-| Thumbnail | Small image accessory |
-| Action Row | Buttons/selects inside the layout |
-| File | Expose an attachment |
-| Label / text input | Modal-only input wrappers (newer API) |
+| Type | Component | Role | Where |
+|---|---|---|---|
+| 1 | Action Row | Layout | Message |
+| 2 | Button | Interactive | Message |
+| 3, 5â€“8 | String / User / Role / Mentionable / Channel Select | Interactive | Message, Modal |
+| 4 | Text Input | Interactive | Modal |
+| 9 | Section | Layout (text + accessory) | Message |
+| 10 | Text Display | Content (markdown) | Message, Modal |
+| 11 | Thumbnail | Content (accessory) | Message |
+| 12 | Media Gallery | Content (image/video grid) | Message |
+| 13 | File | Content (exposes an attachment) | Message |
+| 14 | Separator | Layout (spacing) | Message |
+| 17 | Container | Layout (grouping + accent color) | Message |
+| 18 | Label | Layout (label + one input) | Modal |
+| 19 | File Upload | Interactive | Modal |
+| 21, 22, 23 | Radio Group / Checkbox Group / Checkbox | Interactive | Modal (added Feb 2026) |
 
 Design rules:
 
@@ -112,7 +166,7 @@ Checklist for any panel (help, ticket, voice, giveaway, setup):
 - [ ] `custom_id` encodes what the handler needs, validated on click
 - [ ] Message ID persisted if it must survive restarts
 - [ ] Ownership/permission checks on every interaction
-- [ ] Stale resource → clear message + DB cleanup
+- [ ] Stale resource â†’ clear message + DB cleanup
 - [ ] Delete panel when its resource is deleted
 - [ ] No unbounded collectors; central router preferred
 - [ ] Buttons disabled during destructive operations

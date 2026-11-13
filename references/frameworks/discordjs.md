@@ -8,11 +8,12 @@ what is specific to this library.
 
 ```ts
 import {
-  Client, GatewayIntentBits, Partials, Events, MessageFlags,
+  Client, GatewayIntentBits, Partials, Events, MessageFlags, Options,
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle,
+  LabelBuilder, InteractionContextType, PermissionFlagsBits, Routes,
   ContainerBuilder, TextDisplayBuilder, SectionBuilder, SeparatorBuilder,
-  MediaGalleryBuilder, ThumbnailBuilder, FileBuilder,
+  SeparatorSpacingSize, MediaGalleryBuilder, ThumbnailBuilder, FileBuilder,
 } from 'discord.js';
 ```
 
@@ -20,6 +21,7 @@ import {
 - Builders are namespaced per type; `MessageEmbed`/`MessageActionRow` do not exist in v14.
 - `ephemeral: true` is deprecated in current v14 in favour of `flags: MessageFlags.Ephemeral`.
   Check the installed typings; both work but only one is future-proof.
+- `LabelBuilder` (`@discordjs/builders` 1.15+) is the current way to build modal inputs.
 
 ## 2. Client bootstrap
 
@@ -84,7 +86,7 @@ async function respondWithError(i: Interaction, err: unknown) {
 export const data = new SlashCommandBuilder()
   .setName('ticket')
   .setDescription('Ticket actions')
-  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
   .addSubcommand((sub) =>
     sub.setName('close').setDescription('Close this ticket')
       .addStringOption((o) => o.setName('reason').setDescription('Why').setMaxLength(200)));
@@ -96,7 +98,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 }
 ```
 
-- `setDMPermission(false)` / `setContexts(...)` for guild-only commands.
+- `setContexts(InteractionContextType.Guild)` replaces `setDMPermission(false)`, which is deprecated
+  in current v14 but still present. `setContexts` also covers `BotDM`/`PrivateChannel`.
 - Permission metadata: `setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)` — advisory
   only, re-check in the handler.
 - Register with `client.rest.put(Routes.applicationCommands(clientId), { body })` or a deploy script;
@@ -118,6 +121,35 @@ await interaction.reply({ components: [row], flags: MessageFlags.Ephemeral });
   `interaction.reply({ ..., flags: MessageFlags.Ephemeral })`.
 - Collectors: `message.createMessageComponentCollector({ time, max, idle })`; always handle `end`
   and remove components there. Prefer a central router for persistent panels.
+
+### Modals (Label-based, current API)
+
+```ts
+const modal = new ModalBuilder()
+  .setCustomId(`ticket:close:${ticketId}`)
+  .setTitle('Close ticket')
+  .addLabelComponents(
+    new LabelBuilder()
+      .setLabel('Reason')
+      .setDescription('Shown in the transcript')
+      .setTextInputComponent(
+        new TextInputBuilder()
+          .setCustomId('reason')
+          .setStyle(TextInputStyle.Paragraph)
+          .setMaxLength(500)
+          .setRequired(true),
+      ),
+  );
+
+await interaction.showModal(modal); // must be the initial response
+```
+
+- `LabelBuilder` wraps one input and replaces the deprecated Action Row + Text Input pattern.
+- `ModalBuilder#addTextDisplayComponents` adds static text; `addLabelComponents` adds inputs.
+- Available inputs: text input, all select types, file upload, radio group, checkbox group,
+  checkbox (the last three arrived in February 2026 and need a current library).
+- Read values with `interaction.fields.getTextInputValue('reason')` (text input) or
+  `getStringSelectValues` / `getSelectedUsers` etc.; validate again server-side.
 
 ## 6. Embeds
 
@@ -165,10 +197,29 @@ await channel.send({ components: [container], flags: MessageFlags.IsComponentsV2
 | No cache, raw JSON, lowest memory | `@discordjs/core` + `@discordjs/ws` + `@discordjs/rest` |
 | Shared rate-limit buckets across processes | `@discordjs/proxy` |
 | Shard → queue → workers decoupling | `@discordjs/brokers` |
-| Voice | `@discordjs/voice` |
+| Voice | `@discordjs/voice` 0.19.x (DAVE-capable; see `14-voice.md`) |
 
 `client.ws.on('RAW', (packet) => ...)` gives raw gateway payloads when a wrapper is too heavy, but
 you lose the library's state handling — only do this deliberately.
+
+Cache tuning (see `15-performance.md` for methodology):
+
+```ts
+import { Options } from 'discord.js';
+
+new Client({
+  makeCache: Options.cacheWithLimits({
+    ...Options.DefaultMakeCacheSettings,
+    MessageManager: 50,
+    PresenceManager: 0,
+    ReactionManager: 0,
+  }),
+  sweepers: {
+    ...Options.DefaultSweeperSettings,
+    messages: { interval: 300, lifetime: 1_800 },
+  },
+});
+```
 
 ## 9. Sharding & lifecycle
 
@@ -188,3 +239,9 @@ you lose the library's state handling — only do this deliberately.
 - `Events.ClientReady` fires once per shard, but `InteractionCreate` fires for all shards in-process.
 - `setMaxLength` on options is validation at the API layer, not a substitute for server-side checks.
 - BigInt: keep IDs as strings in JSON/DB; `JSON.stringify` on a BigInt throws.
+- `setDMPermission()` still exists but is deprecated; prefer `setContexts()`.
+- Action Rows with Text Inputs are deprecated in modals; use `LabelBuilder`.
+- `Events.ClientReady` is the current name for the one-time ready event (`ready` is the legacy
+  alias); gate one-time setup on it, not on `RESUMED`.
+- If a builder or option is missing from the installed typings, the version is older than this
+  file — check `@discordjs/builders` version instead of forcing the code to compile.

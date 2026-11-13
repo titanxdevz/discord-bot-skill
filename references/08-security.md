@@ -34,7 +34,9 @@ Validate at every boundary: commands, buttons, modals, REST routes, webhooks, DB
 - Numbers: integer/float, min/max, NaN rejection.
 - Strings: max length, control characters, markdown injection.
 - URLs: scheme allowlist (`https`), no localhost/private IPs if fetching server-side (SSRF).
-- Mentions: never allow `@everyone`/`@here` from user input; use explicit allowed mentions.
+- Mentions: never allow `@everyone`/`@here` from user input; always set safe `allowed_mentions`:
+  - Default recommended policy: `allowedMentions: { parse: ['users'], roles: [], repliedUser: true }`
+  - Never allow `parse: ['everyone', 'roles']` on commands reflecting user strings (echo, announce, embed builders).
 - File uploads: check type/size, store outside the web root, scan if exposed.
 - JSON: schema-validate before use; reject unknown fields for sensitive actions.
 
@@ -67,7 +69,9 @@ Validate at every boundary: commands, buttons, modals, REST routes, webhooks, DB
 
 ## 7. Abuse prevention
 
-- Cooldowns per user/guild/channel; stricter for expensive actions (image, AI, exports).
+- Cooldowns & Token Bucket: enforce per-user command buckets (e.g. max 5 commands / 10s per user ID via Redis/in-memory LRU) to drop spam before hitting Discord API 429 limits.
+- Stricter cooldowns for expensive operations (AI generation, image rendering, data exports).
+- Anti-raid circuit breaker: if invocation or join velocity exceeds baseline, throttle background jobs and enforce verification requirements.
 - Quotas and allowlists for destructive features; feature flags default off.
 - Anti-nuke: rate-limit destructive audit-log actions, snapshot/restore, alert owners.
 - AutoMod: native rules plus app-level filters (invites, spam, mass mentions, phishing).

@@ -121,11 +121,27 @@ Collectors:
 
 ## 6. Modals
 
-- Max 5 top-level text inputs (and component constraints of the current API).
-- `custom_id` routes the submit; include the target resource ID.
-- Validate every field again server-side.
-- On error, respond with a specific message; do not silently drop.
-- Modals cannot be deferred as the initial response; if work is slow after submit, defer then edit.
+Current modal anatomy (2026):
+
+- A modal is `custom_id` + `title` + `components`.
+- **Label** (type 18) is the recommended wrapper for inputs: it associates a label/description
+  with one component. Action Rows containing Text Inputs are **deprecated** in modals.
+- Inputs that can live inside a Label: Text Input (type 4), String/User/Role/Mentionable/Channel
+  Select (3, 5–8), File Upload (19), Radio Group (21), Checkbox Group (22), Checkbox (23 —
+  added February 2026).
+- **Text Display** (type 10) can be used in modals for static explanatory text.
+- Modals cannot contain buttons, and cannot be sent as a follow-up — `showModal` must be the
+  initial response.
+
+Rules:
+
+- Keep modals to a small number of top-level components (historically 5 — verify the current cap
+  in the component reference before designing a long form).
+- `custom_id` routes the submit; include the target resource ID, and validate its shape.
+- Validate every field again server-side: required flags, min/max length, select ranges, file type.
+- On error, respond with a specific message; do not silently drop the submission.
+- If work after submit is slow, `deferReply` then `editReply` — the 3s window still applies.
+- Prefill values are a convenience, never a trust boundary.
 
 ## 7. Pagination & navigation
 

@@ -24,12 +24,16 @@ A bot can mix gateway + REST. A dashboard usually adds REST/OAuth2 and a WebSock
 ## 2. Intents
 
 - Request the **minimum** set. Map every feature to an intent before coding.
-- Privileged: `GUILD_MEMBERS`, `GUILD_PRESENCES`, `MESSAGE_CONTENT`. They must be enabled in the
-  Developer Portal; large apps need review/verification.
-- Declaring an intent you are not allowed to use fails the handshake with `DisallowedIntents`.
+- Privileged: `GUILD_MEMBERS` (1 << 1), `GUILD_PRESENCES` (1 << 8), `MESSAGE_CONTENT` (1 << 15).
+  They must be enabled in the Developer Portal; apps in 100+ guilds also need them approved during
+  verification.
+- Sending an intent you are not allowed to use closes the connection with **`4013` Invalid
+  intent(s)** or **`4014` Disallowed intent(s)** — a boot failure, not a runtime bug.
 - Missing intent symptoms: empty member cache, empty message content, no presence updates,
   reaction events absent.
-- `GUILD_MODERATION` and `AUTO_MODERATION_EXECUTION` are needed for audit-log / AutoMod work.
+- `GUILD_MODERATION` (1 << 2) and `AUTO_MODERATION_EXECUTION` (1 << 21) are needed for audit-log /
+  AutoMod work; `GUILD_EXPRESSIONS` (1 << 3) covers emoji/sticker/soundboard events.
+- Event-by-event mapping lives in `13-events.md`; do not guess which intent carries an event.
 
 Checklist:
 
@@ -54,7 +58,7 @@ Always verify current values in the docs; these are the common ones:
 |---|---|
 | Interaction initial response | 3 seconds |
 | Interaction token lifetime | 15 minutes (edit original/follow-ups) |
-| Message content | 2,000 characters (4,000 with premium) |
+| Message content | 2,000 characters (bots cannot exceed this; the 4,000-character allowance is a client-side premium feature, not a bot API limit) |
 | Embeds per message | 10 |
 | Total embed characters | 6,000 |
 | Embed title / description | 256 / 4,096 |
@@ -65,9 +69,10 @@ Always verify current values in the docs; these are the common ones:
 | `custom_id` | 1–100 characters, unique per message |
 | Button label | 80 characters |
 | Select options | 25; label/value/description 100 |
-| Global chat-input commands | 100 (guild commands have separate limits) |
+| Global chat-input commands | 100 (plus 15 user + 15 message context commands, 1 primary entry point) |
 | Options per command | 25 (subcommands/groups count toward the tree) |
 | File upload (default) | 25 MB per file (boost tiers raise the guild limit) |
+| Global REST rate limit | 50 requests/second per bot, independent of per-route buckets |
 
 Practical rules:
 
@@ -97,7 +102,28 @@ Practical rules:
 - Rotate tokens after exposure; separate applications for dev and prod.
 - Redact tokens, webhook URLs, and OAuth codes in logs and error trackers.
 
-## 7. Registration and scope
+## 7. Direct webhooks (stateless alerts)
+
+Direct incoming webhooks execute message sends without running a WebSocket gateway client or maintaining a bot process:
+
+- **Endpoint**: `POST /api/v10/webhooks/{webhook.id}/{webhook.token}`
+- **The `?wait=true` query parameter**:
+  - Default (`?wait=false` or omitted): Returns `204 No Content` immediately. Discord does not return the created message ID.
+  - With `?wait=true`: Discord creates the message and returns the full `Message` object (`200 OK`) including the snowflake `id`. **Always pass `?wait=true`** if you plan to edit, delete, or cross-reference the posted message later.
+- **Rate limit isolation**:
+  - Webhooks have an independent rate limit bucket: **30 requests per minute per webhook URL**.
+  - Exceeding this triggers `429 Too Many Requests` with a `Retry-After` header specific to that webhook URL, completely isolated from your bot token's 50 req/sec global limit.
+- **Message lifecycle**:
+  - Edit: `PATCH /api/v10/webhooks/{webhook.id}/{webhook.token}/messages/{message.id}`
+  - Delete: `DELETE /api/v10/webhooks/{webhook.id}/{webhook.token}/messages/{message.id}`
+- **Thread & forum routing**:
+  - `?thread_id={thread.id}`: Routes message into an existing thread or forum post.
+  - Payload field `"thread_name": "Title"`: In a forum channel, automatically creates a new thread with this title.
+- **Payload customization**:
+  - `username` and `avatar_url` can be overridden per request.
+  - Supports standard `embeds`, `components` (requires `?with_components=true` for CV2), and explicit `allowed_mentions`.
+
+## 8. Registration and scope
 
 - Global commands: available everywhere, propagation can take time.
 - Guild commands: instant, ideal for development; remember to clear stale ones.
@@ -106,7 +132,7 @@ Practical rules:
 - Keep command payloads deterministic: sort options, stable localization keys.
 - Context commands (user/message) are separate types; do not mix them with chat-input options.
 
-## 8. Checklist
+## 9. Checklist
 
 - [ ] Transport chosen and documented (gateway vs HTTP interactions)
 - [ ] Intents mapped per feature, privileged ones justified
