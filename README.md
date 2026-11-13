@@ -45,10 +45,45 @@ sharding.
 Findings are heuristics for review — confirm each by reading the code path. The script never edits
 files and never touches the network.
 
-## Using it as an agent skill
+## Install as an agent skill
 
-Drop the folder into your agent's skills directory (for OpenCode: `.opencode/skills/discord-bot-skill/`)
-or point the agent at `SKILL.md`. The frontmatter `name`/`description` drives activation.
+The skill follows the standard agent-skill layout, so it installs with the
+[`skills`](https://github.com/vercel-labs/skills) CLI (`npx skills`) — the same flow used by
+[skills.sh](https://skills.sh) skills. Requires Node 22.20+.
+
+```bash
+# install into the current project (auto-detects installed agents)
+npx skills add titanxdevz/discord-bot-skill
+
+# target a specific agent
+npx skills add titanxdevz/discord-bot-skill -a opencode
+npx skills add titanxdevz/discord-bot-skill -a claude-code
+
+# install globally instead of per-project
+npx skills add titanxdevz/discord-bot-skill -g
+
+# preview without installing
+npx skills add titanxdevz/discord-bot-skill --list
+
+# pin a revision
+npx skills add titanxdevz/discord-bot-skill@v1.0.0
+```
+
+Installable skill name: **`discord-bot`** (used with `--skill discord-bot` when a repo holds
+several skills).
+
+No CLI? Copy this folder into a skills directory by hand:
+
+| Agent | Project path | Global path |
+|---|---|---|
+| OpenCode | `.opencode/skills/discord-bot/` | `~/.config/opencode/skills/discord-bot/` |
+| Claude Code | `.claude/skills/discord-bot/` | `~/.claude/skills/discord-bot/` |
+| Universal | `.agents/skills/discord-bot/` | `~/.agents/skills/discord-bot/` |
+
+The frontmatter `name`/`description` in `SKILL.md` drives discovery and activation; keep
+`references/` and `scripts/` beside it so the router's links resolve.
+
+To update later: `npx skills update discord-bot`. To remove: `npx skills remove discord-bot`.
 
 ## Design rules
 
